@@ -9,6 +9,8 @@ The functions used in this project (randint, randn) should be thread-safe.
 """
 
 from typing import Tuple
+
+from PIL import ImageFont
 from torch.functional import Tensor
 from mona.config import config
 import os
@@ -20,7 +22,17 @@ import torch
 import datetime
 from itertools import chain
 
-from mona.datagen.datagen import generate_image
+from mona.datagen.datagen import DataGen
+from mona.text import get_lexicon
+
+lexicon = get_lexicon(config["model_type"])
+if config["model_type"] == "Genshin":
+    fonts = [ImageFont.truetype("./assets/genshin.ttf", i) for i in range(15, 90)]
+elif config["model_type"] == "StarRail":
+    fonts = [ImageFont.truetype("./assets/starrail.ttf", i) for i in range(15, 90)]
+elif config["model_type"] == "WutheringWaves":
+    fonts = [ImageFont.truetype("./assets/wuthering_waves/ARFangXinShuH7GBK-HV.ttf", i) for i in range(15, 90)]
+datagen = DataGen(config, fonts, lexicon)
 
 
 def progressBar(current, total, barLength=40):
@@ -43,7 +55,7 @@ def fill_data(target_tensor_slice: Tensor) -> list:
     length = target_tensor_slice.shape[0]
     y = []
     for i in range(length):
-        im, text = generate_image()
+        im, text = datagen.generate_image()
         tensor = transforms.ToTensor()(im)
         tensor = torch.unsqueeze(tensor, dim=0)
         # NOTE: here tensor.shape == [1, 1, 32, 384]
@@ -69,7 +81,6 @@ def gen_dataset_with_label(size, threads=2) -> Tuple[Tensor, list]:
 
 
 if __name__ == '__main__':
-
     train_size = config["train_size"]
     validate_size = config["validate_size"]
 
@@ -78,7 +89,8 @@ if __name__ == '__main__':
         os.mkdir(folder)
 
     # Use physical cores only
-    threads = max(1, os.cpu_count() // 2)
+    threads = max(1, os.cpu_count())
+    threads = 4
 
     print(
         f"Train size {train_size}, Val size {validate_size}, Thread count {threads}")

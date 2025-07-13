@@ -17,6 +17,6 @@ elif config["model_type"] == "WutheringWaves":
 datagen = DataGen(config, fonts, lexicon)
 
 
-for i in range(10):
+for i in range(100):
     im, label = datagen.generate_image()
     im.save(f"samples/{label}.png")

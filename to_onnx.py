@@ -17,7 +17,7 @@ lexicon = get_lexicon(config["model_type"])
 lexicon_size = lexicon.lexicon_size()
 
 # name = "model_training.pt"
-name = "model_acc100-epoch34.pt"
+name = "model_acc100-epoch2.pt"
 onnx_name = name.rsplit(".", 2)[0] + ".onnx"
 # net = Model(len(word_to_index))
 net = Model2(lexicon_size, in_channels=1)

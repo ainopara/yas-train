@@ -86,7 +86,8 @@ def train():
     # ).to(device)
     if config["pretrain"]:
         # assume the old index_to_word is in "models/index_2_word.json"
-        net.load_can_load(torch.load(f"models/{config['pretrain_name']}"))
+        net.load_state_dict(torch.load(f"models/{config['pretrain_name']}"))
+        # net.load_can_load(torch.load(f"models/{config['pretrain_name']}"))
 
     data_aug_transform = transforms.Compose([
         transforms.RandomApply([
@@ -105,8 +106,10 @@ def train():
         transforms.RandomApply([AddGaussianNoise(mean=0, std=1/255)], p=0.5),
     ])
 
-    train_dataset = MyOnlineDataSet(config['train_size'])
-    validate_dataset = MyOnlineDataSet(config['validate_size'])
+    train_dataset = MyOnlineDataSet(config['train_size']) if config["online_train"] else MyDataSet(
+        torch.load("data/train_x.pt"), torch.load("data/train_label.pt"))
+    validate_dataset = MyOnlineDataSet(config['validate_size']) if config["online_val"] else MyDataSet(
+        torch.load("data/validate_x.pt"), torch.load("data/validate_label.pt"))
 
     train_loader = DataLoader(train_dataset, shuffle=True, num_workers=config["dataloader_workers"], batch_size=config["batch_size"],)
     validate_loader = DataLoader(validate_dataset, num_workers=config["dataloader_workers"], batch_size=config["batch_size"])
@@ -179,6 +182,19 @@ class AddGaussianNoise(object):
     def __repr__(self):
         return self.__class__.__name__ + '(mean={0}, std={1})'.format(self.mean, self.std)
 
+
+class MyDataSet(Dataset):
+    def __init__(self, x, labels):
+        self.x = x
+        self.labels = labels
+
+    def __len__(self):
+        return len(self.labels)
+
+    def __getitem__(self, index):
+        x = self.x[index]
+        label = self.labels[index]
+        return x, label
 
 class MyOnlineDataSet(Dataset):
     def __init__(self, size: int):
