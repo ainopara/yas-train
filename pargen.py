@@ -158,6 +158,34 @@ def gen_dataset_with_label(size, threads=2, extra_folder="extra_training_data") 
     return x, all_labels
 
 
+def gen_custom_validation_set(extra_folder="extra_training_data") -> Tuple[Tensor, list]:
+    """Generate a custom validation set using only extra training data.
+    
+    Args:
+        extra_folder (str): Path to the extra training data folder
+        
+    Returns:
+        Tuple[Tensor, list]: Validation tensors and labels from extra training data
+    """
+    extra_data = load_extra_training_data(extra_folder)
+    
+    if not extra_data:
+        print(f"No extra training data found in {extra_folder}")
+        return torch.zeros((0, 1, 32, 384)), []
+    
+    # Create tensor for all extra data
+    x = torch.zeros((len(extra_data), 1, 32, 384))
+    labels = []
+    
+    # Fill with extra training data
+    for i, (tensor, label) in enumerate(extra_data):
+        x[i] = tensor
+        labels.append(label)
+    
+    print(f"Created custom validation set with {len(extra_data)} samples")
+    return x, labels
+
+
 if __name__ == '__main__':
     train_size = config["train_size"]
     validate_size = config["validate_size"]
@@ -188,6 +216,17 @@ if __name__ == '__main__':
     print(f"{datetime.datetime.now()} Saving validation data")
     torch.save(x, "data/validate_x.pt")
     torch.save(y, "data/validate_label.pt")
+
+    # Generate and save custom validation set from extra training data
+    print(f"{datetime.datetime.now()} Generating custom validation data")
+    custom_x, custom_y = gen_custom_validation_set()
+    
+    if len(custom_y) > 0:
+        print(f"{datetime.datetime.now()} Saving custom validation data")
+        torch.save(custom_x, "data/custom_validate_x.pt")
+        torch.save(custom_y, "data/custom_validate_label.pt")
+    else:
+        print("No custom validation data to save")
 
     # Verify the result
     # for tensor, y in zip(x,y):
