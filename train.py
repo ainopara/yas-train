@@ -4,6 +4,7 @@ import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
 import torchvision.transforms as transforms
 from PIL import ImageFont
+import os
 
 from mona.datagen.datagen import DataGen
 from mona.config import config
@@ -69,6 +70,56 @@ def validate(net, validate_loader):
 
     net.train()
     return correct / total
+
+
+def validate_custom(net):
+    """Validate the model on custom validation set from extra training data."""
+    if not os.path.exists("data/custom_validate_x.pt") or not os.path.exists("data/custom_validate_label.pt"):
+        print("No custom validation data found")
+        return None
+    
+    try:
+        custom_x = torch.load("data/custom_validate_x.pt")
+        custom_y = torch.load("data/custom_validate_label.pt")
+        
+        if len(custom_y) == 0:
+            print("Custom validation set is empty")
+            return None
+        
+        custom_dataset = MyDataSet(custom_x, custom_y)
+        custom_loader = DataLoader(custom_dataset, batch_size=config["batch_size"])
+        
+        net.eval()
+        correct = 0
+        total = 0
+        failed_cases = []
+        
+        with torch.no_grad():
+            for x, label in custom_loader:
+                x = x.to(device)
+                predict = predict_net(net, x, lexicon)
+                
+                for i in range(len(label)):
+                    if predict[i] == label[i]:
+                        correct += 1
+                    else:
+                        failed_cases.append((predict[i], label[i]))
+                total += len(label)
+        
+        net.train()
+        accuracy = correct / total if total > 0 else 0
+        
+        print(f"Custom validation: {correct}/{total} correct ({accuracy * 100:.2f}%)")
+        if failed_cases and len(failed_cases) <= 5:  # Show up to 5 failed cases
+            print("Failed cases:")
+            for pred, truth in failed_cases:
+                print(f"  Predicted: '{pred}' | Truth: '{truth}'")
+        
+        return accuracy
+        
+    except Exception as e:
+        print(f"Error loading custom validation data: {e}")
+        return None
 
 
 def train():
@@ -156,6 +207,12 @@ def train():
                 print("Validating and checkpointing")
                 rate = validate(net, validate_loader)
                 print(f"{cur_time} rate: {rate * 100}%")
+                
+                # Custom validation on extra training data
+                custom_rate = validate_custom(net)
+                if custom_rate is not None:
+                    print(f"{cur_time} custom rate: {custom_rate * 100:.2f}%")
+                
                 torch.save(net.state_dict(), f"models/model_training.pt")
                 if rate == 1:
                     torch.save(net.state_dict(), f"models/model_acc100-epoch{epoch}.pt")
@@ -169,6 +226,12 @@ def train():
         print("predict:     ", predict[:10])
         print("ground truth:", label[:10])
         break
+    
+    # Final custom validation
+    print("\nFinal custom validation:")
+    final_custom_rate = validate_custom(net)
+    if final_custom_rate is not None:
+        print(f"Final custom validation accuracy: {final_custom_rate * 100:.2f}%")
 
 
 class AddGaussianNoise(object):
