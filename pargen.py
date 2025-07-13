@@ -10,12 +10,13 @@ The functions used in this project (randint, randn) should be thread-safe.
 
 from typing import Tuple
 
-from PIL import ImageFont
+from PIL import ImageFont, Image
 from torch.functional import Tensor
 from mona.config import config
 import os
 import pathlib
 from multiprocessing import Pool
+import glob
 
 import torchvision.transforms as transforms
 import torch
@@ -33,6 +34,57 @@ elif config["model_type"] == "StarRail":
 elif config["model_type"] == "WutheringWaves":
     fonts = [ImageFont.truetype("./assets/wuthering_waves/ARFangXinShuH7GBK-HV.ttf", i) for i in range(15, 90)]
 datagen = DataGen(config, fonts, lexicon)
+
+
+def load_extra_training_data(extra_folder="extra_training_data"):
+    """Load extra training images and their corresponding labels from a folder.
+    
+    Args:
+        extra_folder (str): Path to the extra training data folder containing images and txt files
+        
+    Returns:
+        list: List of tuples (tensor, label) for extra training data
+    """
+    extra_data = []
+    extra_path = pathlib.Path(extra_folder)
+    
+    if not extra_path.exists():
+        return extra_data
+    
+    # Find all image files in the extra training data folder
+    image_extensions = ['*.png', '*.jpg', '*.jpeg', '*.bmp', '*.tiff']
+    image_files = []
+    for ext in image_extensions:
+        image_files.extend(glob.glob(str(extra_path / ext)))
+    
+    for image_file in image_files:
+        # Get corresponding txt file
+        txt_file = pathlib.Path(image_file).with_suffix('.txt')
+        
+        if txt_file.exists():
+            try:
+                # Load image and convert to tensor
+                im = Image.open(image_file).convert('L')  # Convert to grayscale
+                
+                # Check image dimensions
+                if im.size != (384, 32):
+                    print(f"Warning: {image_file} has incorrect size {im.size}, expected (384, 32). Skipping.")
+                    continue
+                
+                tensor = transforms.ToTensor()(im)
+                tensor = torch.unsqueeze(tensor, dim=0)
+                
+                # Load label from txt file
+                with open(txt_file, 'r', encoding='utf-8') as f:
+                    label = f.read().strip()
+                
+                extra_data.append((tensor, label))
+                
+            except Exception as e:
+                print(f"Warning: Failed to load {image_file}: {e}")
+    
+    print(f"Loaded {len(extra_data)} extra training samples from {extra_folder}")
+    return extra_data
 
 
 def progressBar(current, total, barLength=40):
@@ -68,16 +120,42 @@ def fill_data(target_tensor_slice: Tensor) -> list:
     return y
 
 
-def gen_dataset_with_label(size, threads=2) -> Tuple[Tensor, list]:
-    # Allocate the output Tensor, and split into sub-tensors (views, copy-free)
+def gen_dataset_with_label(size, threads=2, extra_folder="extra_training_data") -> Tuple[Tensor, list]:
+    # Load extra training data first
+    extra_data = load_extra_training_data(extra_folder)
+    extra_count = len(extra_data)
+    
+    # Calculate how many generated samples we need
+    generated_size = max(0, size - extra_count)
+    
+    if extra_count > size:
+        print(f"Warning: Extra training data ({extra_count}) exceeds requested size ({size}). Using first {size} samples.")
+        extra_data = extra_data[:size]
+        extra_count = size
+        generated_size = 0
+    
+    # Allocate the output Tensor
     x = torch.zeros((size, 1, 32, 384))
-    x_split = torch.tensor_split(x, threads, dim=0)
-
-    with Pool(threads) as p:
-        print(f"Starting threadpool with {threads} threads.")
-        labels = p.map(fill_data, x_split)
-        print("\nStopping threadpool.")
-        return x, list(chain.from_iterable(labels))
+    all_labels = []
+    
+    # Generate regular data first
+    if generated_size > 0:
+        # Split tensor for parallel generation
+        generated_x = x[:generated_size]
+        x_split = torch.tensor_split(generated_x, threads, dim=0)
+        
+        with Pool(threads) as p:
+            print(f"Starting threadpool with {threads} threads for {generated_size} generated samples.")
+            labels = p.map(fill_data, x_split)
+            print("\nStopping threadpool.")
+            all_labels.extend(list(chain.from_iterable(labels)))
+    
+    # Fill with extra training data at the end (higher priority)
+    for i, (tensor, label) in enumerate(extra_data[:size]):
+        x[generated_size + i] = tensor
+        all_labels.append(label)
+    
+    return x, all_labels
 
 
 if __name__ == '__main__':
