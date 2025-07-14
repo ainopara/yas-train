@@ -21,9 +21,9 @@ def construct_genshin_lexicon():
     weighted_generator.add_entry(0.15, random_main_stat_value)
     weighted_generator.add_entry(0.64, random_sub_stat)
     weighted_generator.add_entry(0.02, random_level)
-    weighted_generator.add_entry(0.1, random_equip)
+    weighted_generator.add_entry(0.04, random_equip)
     weighted_generator.add_entry(0.1, random_artifact_count)
-    weighted_generator.add_entry(0.12, random_number_generator)
+    weighted_generator.add_entry(0.18, random_number_generator)
 
     return weighted_generator
 
